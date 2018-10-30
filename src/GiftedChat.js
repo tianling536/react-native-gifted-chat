@@ -225,10 +225,6 @@ class GiftedChat extends React.Component {
   }
 
   getOtherInputToolbarHeight() {
-    //人保E通处理，E动神州无须计算
-    if (this.props.isMobileAgent) {
-        return 0;
-    }
     return this._otherInputToolbarHeight;
   }
   // TODO: setMinInputToolbarHeight
@@ -238,7 +234,7 @@ class GiftedChat extends React.Component {
       : this.props.minInputToolbarHeight;
   }
   calculateInputToolbarHeight(composerHeight) {
-    return composerHeight + (this.getMinInputToolbarHeight()+this.getOtherInputToolbarHeight()  - MIN_COMPOSER_HEIGHT);
+    return composerHeight + (this.getMinInputToolbarHeight() - MIN_COMPOSER_HEIGHT);
   }
 
   /**
@@ -252,7 +248,11 @@ class GiftedChat extends React.Component {
    * Returns the height, based on current window size, taking the keyboard into account.
    */
   getMessagesContainerHeightWithKeyboard(composerHeight = this.state.composerHeight) {
-    return this.getBasicMessagesContainerHeight(composerHeight) - this.getKeyboardHeight() + this.getBottomOffset();
+    return this.getBasicMessagesContainerHeight(composerHeight) - this.getKeyboardHeight()+ this.getBottomOffset();
+  }
+
+  getMessagesContainerHeightWithOtherInputToolbar(composerHeight = this.state.composerHeight) {
+    return this.getBasicMessagesContainerHeight(composerHeight) - this.getOtherInputToolbarHeight() + this.getBottomOffset();
   }
 
   prepareMessagesContainerHeight(value) {
@@ -262,11 +262,46 @@ class GiftedChat extends React.Component {
     return value;
   }
 
+  //展示表情、图片、相机内容时计算高度
+  onOtherInputToolbarWillShow(){
+    this.setBottomOffset(this.props.bottomOffset);
+    const newMessagesContainerHeight = this.getMessagesContainerHeightWithOtherInputToolbar();
+    if (this.props.isAnimated === true) {
+        Animated.timing(this.state.messagesContainerHeight, {
+            toValue: newMessagesContainerHeight,
+            duration: 210,
+        }).start();
+    } else {
+        this.setState({
+            messagesContainerHeight: newMessagesContainerHeight,
+        });
+    }
+  }
+
+  //隐藏内容时再次计算高度
+  onOtherInputToolbarWillHide() {
+    this.setOtherInputToolbarHeight(0);
+    this.setBottomOffset(0);
+    const newMessagesContainerHeight = this.getBasicMessagesContainerHeight();
+    if (this.props.isAnimated === true) {
+        Animated.timing(this.state.messagesContainerHeight, {
+            toValue: newMessagesContainerHeight,
+            duration: 210,
+        }).start();
+    } else {
+        this.setState({
+            messagesContainerHeight: newMessagesContainerHeight,
+        });
+    }
+  }
+
   onKeyboardWillShow(e) {
     this.setIsTypingDisabled(true);
     this.setKeyboardHeight(e.endCoordinates ? e.endCoordinates.height : e.end.height);
     this.setBottomOffset(this.props.bottomOffset);
-    const newMessagesContainerHeight = this.getMessagesContainerHeightWithKeyboard();
+    //人保E通(从其他模块切换键盘时）,异步故特殊处理，需计算其他模块的高度，E动神州无须计算
+    let otherInputToolbarHeight=this.props.isMobileAgent?0:this.getOtherInputToolbarHeight();
+    const newMessagesContainerHeight = this.getMessagesContainerHeightWithKeyboard(otherInputToolbarHeight+this.state.composerHeight);
     if (this.props.isAnimated === true) {
       Animated.timing(this.state.messagesContainerHeight, {
         toValue: newMessagesContainerHeight,
@@ -283,6 +318,10 @@ class GiftedChat extends React.Component {
     this.setIsTypingDisabled(true);
     this.setKeyboardHeight(0);
     this.setBottomOffset(0);
+    //其他模块存在时，键盘隐藏不用计算高度（其他模块show时会自己计算,异步故处理）
+    if(this.getOtherInputToolbarHeight()){
+      return ;
+    }
     const newMessagesContainerHeight = this.getBasicMessagesContainerHeight();
     if (this.props.isAnimated === true) {
       Animated.timing(this.state.messagesContainerHeight, {
@@ -389,8 +428,9 @@ class GiftedChat extends React.Component {
   }
 
   onInputSizeChanged(size) {
+    //发表情时，需加上表情的模块高度
     const newComposerHeight = Math.max(MIN_COMPOSER_HEIGHT, Math.min(MAX_COMPOSER_HEIGHT, size.height));
-    const newMessagesContainerHeight = this.getMessagesContainerHeightWithKeyboard(newComposerHeight);
+    const newMessagesContainerHeight = this.getMessagesContainerHeightWithKeyboard(newComposerHeight+this.getOtherInputToolbarHeight());
     this.setState({
       composerHeight: newComposerHeight,
       messagesContainerHeight: this.prepareMessagesContainerHeight(newMessagesContainerHeight),
@@ -456,6 +496,8 @@ class GiftedChat extends React.Component {
       onInputSizeChanged: this.onInputSizeChanged,
       onTextChanged: this.onInputTextChanged,
       setOtherInputToolbarHeight: (value) => this.setOtherInputToolbarHeight(value),
+      onOtherInputToolbarWillShow:(height) => this.onOtherInputToolbarWillShow(height),
+      onOtherInputToolbarWillHide: () => this.onOtherInputToolbarWillHide(),
       textInputProps: {
         ...this.props.textInputProps,
         ref: (textInput) => (this.textInput = textInput),
